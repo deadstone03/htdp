@@ -27,13 +27,15 @@
 ; Exercise95
 ; Exercise96
 (define WIDTH 200)
-(define HEIGHT 200)
+(define HEIGHT 400)
 (define BACKGROUND (empty-scene WIDTH HEIGHT))
 (define MISSILE (rectangle 5 10 "solid" "red"))
 (define TANK (rectangle 20 5 "solid" "blue"))
 (define UFO (overlay (circle 5 "solid" "green") (rectangle 20 5 "solid" "green")))
 (define TANK-Y (- HEIGHT (/ (image-height TANK) 2)))
 (define UFO-MAX-Y (- HEIGHT (/ (image-height UFO) 2)))
+(define UFO-SPEED 1)
+(define MISSILE-SPEED (* UFO-SPEED 3))
 
 ; Tank Image -> Image
 ; add Tank to the image
@@ -99,4 +101,96 @@
                     (tank-render (fired-tank s) BACKGROUND) (si-render s))]))
 
 ; Exercise99
-(define 
+
+; Missile -> Missile
+; Move missile for one tick
+(check-expect (move-missile (make-posn 10 20)) (make-posn 10 (- 20 MISSILE-SPEED)))
+(define (move-missile m)
+  (make-posn (posn-x m) (- (posn-y m) MISSILE-SPEED)))
+
+; UFO -> UFO
+; move UFO for one tick
+(check-expect (move-ufo (make-posn 10 20) 3) (make-posn 13 (+ 20 UFO-SPEED)))
+(check-expect (move-ufo (make-posn 5 20) -10) (make-posn 15 (+ 20 UFO-SPEED)))
+(define (move-ufo u delta)
+  (make-posn (if (< 0 (+ (posn-x u) delta) WIDTH)
+                 (+ (posn-x u) delta)
+                 (- (posn-x u) delta))
+             (+ UFO-SPEED (posn-y u))))
+; SIGS Number -> SIGS
+; move the space-invader objects predictably by delta
+(check-expect (si-move-proper (make-aim (make-posn 10 20) (make-tank 10 3)) 10)
+              (make-aim (make-posn 20 (+ 20 UFO-SPEED)) (make-tank 10 3)))
+(check-expect (si-move-proper (make-fired (make-posn 10 20) (make-tank 10 3) (make-posn 10 30)) 10)
+              (make-fired (make-posn 20 (+ UFO-SPEED 20)) (make-tank 10 3) (make-posn 10 (- 30 MISSILE-SPEED))))
+(define (si-move-proper w delta)
+  (cond
+    [(aim? w) (make-aim (move-ufo (aim-ufo w) delta)
+                        (aim-tank w))]
+    [(fired? w)
+     (cond
+       [(> (posn-y (fired-missile w)) 0)
+        (make-fired (move-ufo (fired-ufo w) delta)
+                    (fired-tank w)
+                    (move-missile (fired-missile w)))]
+       [else
+        (make-aim
+         (move-ufo (fired-ufo w) delta)
+         (fired-tank w))])]))
+
+(define RANDOM-JUMP 10)
+; SIGS -> SIGS
+; UFO random move left or right
+(define (si-move w)
+  (si-move-proper w (- (random RANDOM-JUMP) (/ RANDOM-JUMP 2))))
+
+; Tank KeyEvent -> Tank
+; move a Tank based on the input
+(check-expect (move-tank (make-tank 10 3) "left") (make-tank 7 3))
+(check-expect (move-tank (make-tank 10 3) "right") (make-tank 13 3))
+(define (move-tank t k)
+  (cond
+    [(string=? k "left") (make-tank (- (tank-loc t) (tank-vel t)) (tank-vel t))]
+    [(string=? k "right") (make-tank (+ (tank-loc t) (tank-vel t)) (tank-vel t))]))
+
+; SIGS KeyEvent -> SIGS
+; control the tank based on key input
+(define (si-control w k)
+  (cond
+    [(or (string=? k "left") (string=? k "right"))
+     (cond
+       [(aim? w) (make-aim (aim-ufo w)
+                           (move-tank (aim-tank w) k))]
+       [(fired? w) (make-fired (fired-ufo w)
+                               (move-tank (fired-tank w) k)
+                               (fired-missile w))])]
+    [(string=? k " ")
+     (cond
+       [(aim? w) (make-fired (aim-ufo w) (aim-tank w) (make-posn (tank-loc (aim-tank w)) TANK-Y))]
+       [(fired? w) w])]
+    [else w]))
+
+(define (main w)
+  (big-bang w
+            [to-draw si-render]
+            [on-key si-control]
+            [on-tick si-move]
+            [stop-when si-game-over? si-render-final]))
+
+; Exercise101
+; Exercise102
+; Exercise103
+; Exercise104
+; Exercise105
+
+; A Coordinate is one of: 
+; – a NegativeNumber 
+; interpretation on the y axis, distance from top
+; – a PositiveNumber 
+; interpretation on the x axis, distance from left
+; – a Posn
+; interpretation an ordinary Cartesian point
+
+10
+-10
+(make-posn 10 20)
