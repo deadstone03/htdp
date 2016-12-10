@@ -231,3 +231,5 @@
             [on-key si-control]
             [on-tick si-move]
             [stop-when si-game-over? si-render-final]))
+
+; Exercise160
