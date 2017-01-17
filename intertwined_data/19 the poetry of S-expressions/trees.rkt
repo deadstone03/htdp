@@ -83,3 +83,26 @@
   (cond
     [(no-parent? a-tree) #false]
     [else (or (blue-eyed-child? (child-father a-tree)) (blue-eyed-child? (child-mother a-tree)))]))
+
+; Exercise314
+; FF -> boolean
+; check if any of the persons is blue eye
+(check-expect (blue-eyed-child-in-forest? (list Carl Gustav)) #true)
+(define (blue-eyed-child-in-forest? ff)
+  (ormap blue-eyed-child? ff))
+
+; FF y -> Number
+; average age of the FF
+(check-expect (average-age-ff (list Carl) 2000) 74)
+(define (average-age-ff ff y)
+  (local
+    (
+     (define (get-age d)
+       (- y d))
+     (define (sum-age a-tree)
+       (cond
+         [(no-parent? a-tree) 0]
+         [else (+ (get-age (child-date a-tree)) (sum-age (child-father a-tree)) (sum-age (child-mother a-tree)))]))
+     )
+    (/ (foldr (lambda (a-tree s) (+ (sum-age a-tree) s)) 0 ff)
+       (foldr (lambda (a-tree s) (+ (count-persons a-tree) s)) 0 ff))))
