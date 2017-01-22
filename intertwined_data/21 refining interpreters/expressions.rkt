@@ -244,12 +244,102 @@
 (define (lookup-con da e)
   (cond
     [(empty? da) (error (string-append (symbol->string e) " is not defined"))]
-    [else (if (equal? e (first (first da))) (second (first da)) (lookup-con e (rest da)))]))
+    [else (if (equal? e (first (first da))) (second (first da)) (lookup-con (rest da) e))]))
 
+(check-expect (lookup-con-def (make-da-all (list (list 'x 2) (list 'y 3)) da-fgh) 'y) 3)
 (define (lookup-con-def da s)
   (lookup-con (da-all-vs da) s))
 
+(check-expect (lookup-fun-def (make-da-all (list (list 'x 2) (list 'y 3)) da-fgh) 'g) g)
 (define (lookup-fun-def da f)
   (lookup-def (da-all-fs da) f))
 
-eval-all
+; BSL-func-expr da-all -> Number
+; evaluate the expression
+(check-expect (eval-all
+               (make-func 'f (make-func 'g 'y))
+               (make-da-all (list (list 'x 2) (list 'y 3)) da-fgh))
+              12)
+(check-expect (eval-all
+               (make-add (make-func 'f (make-func 'g 'x))
+                         (make-func 'h (make-func 'g (make-mul 'x 'y))))
+               (make-da-all (list (list 'x 2) (list 'y 3)) da-fgh))
+              61)
+(define (eval-all ex da)
+  (cond
+    [(symbol? ex) (lookup-con-def da ex)]
+    [(number? ex) ex]
+    [(add? ex) (+ (eval-all (add-left ex) da) (eval-all (add-right ex) da))]
+    [(mul? ex) (* (eval-all (mul-left ex) da) (eval-all (mul-right ex) da))]
+    [(func? ex)
+     (local
+       (
+        (define f-def (lookup-fun-def da (func-name ex))))
+       (eval-all (subst-func (func-def-body f-def) (func-def-arg f-def) (eval-all (func-arg ex) da)) da)
+       )]))
+
+; Exercise 362
+
+; S-expr -> [Symbol, Number]
+; parse con define to a two elements list [con name, con value]
+(check-expect (parse-define-con '(define x 2)) (list 'x 2))
+(define (parse-define-con sexp)
+  (cond
+    [(and (cons? sexp) (equal? 'define (first sexp)) (= (length sexp) 3)) (list (second sexp) (third sexp))]
+    [error (string-append sexp " is not a con define")]))
+
+; S-expr -> func
+; parse func define
+(check-expect (parse-define-func '(define (f x) (+ x 1))) (make-func-def 'f 'x (make-add 'x 1)))
+(define (parse-define-func sexp)
+  (make-func-def (first (second sexp)) (second (second sexp))
+             (parse-expression (third sexp))))
+
+; s-expr -> boolean
+; s-expr is a func define or not
+(check-expect (func-define? '(define x 2)) #false)
+(check-expect (func-define? '(define (f x) (+ x 1))) #true)
+(define (func-define? expr)
+  (cons? (second expr)))
+
+; LS -> da-all
+; parse func and con
+(check-expect (parse-define-all (list '(define x 2) '(define (f x) (+ x 1))))
+              (make-da-all (list (list 'x 2)) (list (make-func-def 'f 'x (make-add 'x 1)))))
+(define (parse-define-all ls)
+  (cond
+    [(empty? ls) (make-da-all '() '())]
+    [else
+     (local
+       ((define rest-da (parse-define-all (rest ls))))
+       (if (func-define? (first ls))
+           (make-da-all (da-all-vs rest-da)
+                        (cons (parse-define-func (first ls)) (da-all-fs rest-da)))
+           (make-da-all (cons (parse-define-con (first ls)) (da-all-vs rest-da)) (da-all-fs rest-da))))]))
+
+; S-expr -> BSL-expr
+; parse an S-expr to a BSL-expr
+(check-expect (parse-expression '(* (+ x 2) (+ y 3)))
+              (make-mul (make-add 'x 2) (make-add 'y 3)))
+(check-expect (parse-expression '(f (* 1 2)))
+              (make-func 'f (make-mul 1 2)))
+(define (parse-expression sexp)
+  (cond
+    [(number? sexp) sexp]
+    [(symbol? sexp) sexp]
+    [(cons? sexp)
+     (cond
+       [(equal? (first sexp) '*) (make-mul (parse-expression (second sexp)) (parse-expression (third sexp)))]
+       [(equal? (first sexp) '+) (make-add (parse-expression (second sexp)) (parse-expression (third sexp)))]
+       [(symbol? (first sexp)) (make-func (first sexp) (parse-expression (second sexp)))])]))
+
+; S-expr sl -> Number
+; evaluate the s expression and the definations to a number
+(check-expect (interpreter '(f (+ 1 2)) (list '(define (f x) (* x 2)))) 6)
+(check-expect (interpreter '(* (f (+ 1 x)) (g (* 2 y))) (list '(define (f x) (* x 2))
+                                                              '(define (g x) (+ x 1))
+                                                              '(define x 3)
+                                                              '(define y 4)))
+              72)
+(define (interpreter sexp sl)
+  (eval-all (parse-expression sexp) (parse-define-all sl)))
